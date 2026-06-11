@@ -3,6 +3,11 @@ import type { Contract, ContractFilter, CreateContractRequest, Template, Clause,
 import { contracts as mockContracts, templates as mockTemplates, clauses as mockClauses } from '../mock/data';
 import { generateContractNo, generateArchiveNo } from '../utils/format';
 import { useApprovalStore } from './useApprovalStore';
+import { loadPersist, savePersist } from '../utils/persist';
+
+const initialContracts = loadPersist<Contract[]>('contracts', mockContracts);
+const initialTemplates = loadPersist<Template[]>('templates', mockTemplates);
+const initialClauses = loadPersist<Clause[]>('clauses', mockClauses);
 
 interface ContractStore {
   contracts: Contract[];
@@ -30,9 +35,9 @@ interface ContractStore {
 }
 
 export const useContractStore = create<ContractStore>((set, get) => ({
-  contracts: mockContracts,
-  templates: mockTemplates,
-  clauses: mockClauses,
+  contracts: initialContracts,
+  templates: initialTemplates,
+  clauses: initialClauses,
   loading: false,
   
   fetchContracts: async (filter) => {
@@ -102,6 +107,7 @@ export const useContractStore = create<ContractStore>((set, get) => ({
     };
     
     set((state) => ({ contracts: [newContract, ...state.contracts] }));
+    savePersist('contracts', get().contracts);
     return newContract;
   },
   
@@ -113,6 +119,7 @@ export const useContractStore = create<ContractStore>((set, get) => ({
         c.id === id ? { ...c, ...data, updatedAt: new Date().toISOString().split('T')[0] } : c
       ),
     }));
+    savePersist('contracts', get().contracts);
     
     const updated = get().contracts.find(c => c.id === id);
     return updated!;
@@ -120,6 +127,7 @@ export const useContractStore = create<ContractStore>((set, get) => ({
   
   deleteContract: (id) => {
     set((state) => ({ contracts: state.contracts.filter(c => c.id !== id) }));
+    savePersist('contracts', get().contracts);
   },
   
   submitForApproval: async (id) => {
@@ -143,6 +151,7 @@ export const useContractStore = create<ContractStore>((set, get) => ({
         c.id === id ? { ...c, status: 'approving', updatedAt: new Date().toISOString().split('T')[0] } : c
       ),
     }));
+    savePersist('contracts', get().contracts);
     
     return true;
   },
@@ -150,11 +159,14 @@ export const useContractStore = create<ContractStore>((set, get) => ({
   signContract: async (id) => {
     await new Promise(resolve => setTimeout(resolve, 300));
     
+    const signDate = new Date().toISOString().split('T')[0];
+    
     set((state) => ({
       contracts: state.contracts.map(c => 
-        c.id === id ? { ...c, status: 'signed', signDate: new Date().toISOString().split('T')[0], updatedAt: new Date().toISOString().split('T')[0] } : c
+        c.id === id ? { ...c, status: 'signed', signDate, updatedAt: signDate } : c
       ),
     }));
+    savePersist('contracts', get().contracts);
     
     const contract = get().contracts.find(c => c.id === id);
     if (contract) {
@@ -163,7 +175,8 @@ export const useContractStore = create<ContractStore>((set, get) => ({
         contract.id,
         contract.title,
         contract.startDate,
-        contract.endDate
+        contract.endDate,
+        contract.departmentId
       );
     }
     
@@ -174,17 +187,29 @@ export const useContractStore = create<ContractStore>((set, get) => ({
     await new Promise(resolve => setTimeout(resolve, 300));
     
     const archiveNo = generateArchiveNo();
+    const now = new Date();
+    const archivedAt = now.toISOString();
     
     set((state) => ({
-      contracts: state.contracts.map(c => 
-        c.id === id ? { 
+      contracts: state.contracts.map(c => {
+        if (c.id !== id) return c;
+        return { 
           ...c, 
           status: 'performing', 
-          archiveNo, 
-          updatedAt: new Date().toISOString().split('T')[0] 
-        } : c
-      ),
+          archiveNo,
+          archiveInfo: {
+            archiveNo,
+            archivedAt,
+            archivedBy: c.creatorId,
+            archivedByName: c.creatorName || '系统',
+            summary: `合同「${c.title}」已完成电子签署，正式归档进入履约阶段。合同金额${c.amount}元，期限自${c.startDate}至${c.endDate}。`,
+            signDate: c.signDate || '',
+          },
+          updatedAt: now.toISOString().split('T')[0],
+        };
+      }),
     }));
+    savePersist('contracts', get().contracts);
     
     return true;
   },
@@ -195,6 +220,7 @@ export const useContractStore = create<ContractStore>((set, get) => ({
         c.id === id ? { ...c, status, updatedAt: new Date().toISOString().split('T')[0] } : c
       ),
     }));
+    savePersist('contracts', get().contracts);
   },
   
   getRecommendedTemplates: (type, amount) => {
@@ -218,16 +244,19 @@ export const useContractStore = create<ContractStore>((set, get) => ({
       createdAt: new Date().toISOString().split('T')[0],
     };
     set((state) => ({ templates: [...state.templates, newTemplate] }));
+    savePersist('templates', get().templates);
   },
   
   updateTemplate: (id, data) => {
     set((state) => ({
       templates: state.templates.map(t => t.id === id ? { ...t, ...data } : t),
     }));
+    savePersist('templates', get().templates);
   },
   
   deleteTemplate: (id) => {
     set((state) => ({ templates: state.templates.filter(t => t.id !== id) }));
+    savePersist('templates', get().templates);
   },
   
   addClause: (clause) => {
@@ -236,16 +265,19 @@ export const useContractStore = create<ContractStore>((set, get) => ({
       id: `clause${Date.now()}`,
     };
     set((state) => ({ clauses: [...state.clauses, newClause] }));
+    savePersist('clauses', get().clauses);
   },
   
   updateClause: (id, data) => {
     set((state) => ({
       clauses: state.clauses.map(c => c.id === id ? { ...c, ...data } : c),
     }));
+    savePersist('clauses', get().clauses);
   },
   
   deleteClause: (id) => {
     set((state) => ({ clauses: state.clauses.filter(c => c.id !== id) }));
+    savePersist('clauses', get().clauses);
   },
   
   exportContracts: (filter) => {

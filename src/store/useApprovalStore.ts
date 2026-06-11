@@ -2,6 +2,12 @@ import { create } from 'zustand';
 import type { ApprovalFlow, ApprovalActionRequest, ApprovalRule, PerformanceTask, ContractChange, DashboardStats, Warning, ApprovalNode } from '../types';
 import { approvalFlows as mockFlows, approvalRules as mockRules, performanceTasks as mockTasks, contractChanges as mockChanges, getDashboardStats, users, departments } from '../mock/data';
 import { useContractStore } from './useContractStore';
+import { loadPersist, savePersist } from '../utils/persist';
+
+const initialFlows = loadPersist<ApprovalFlow[]>('approvalFlows', mockFlows);
+const initialRules = loadPersist<ApprovalRule[]>('approvalRules', mockRules);
+const initialTasks = loadPersist<PerformanceTask[]>('performanceTasks', mockTasks);
+const initialChanges = loadPersist<ContractChange[]>('contractChanges', mockChanges);
 
 function addHours(date: Date, hours: number): Date {
   return new Date(date.getTime() + hours * 60 * 60 * 1000);
@@ -55,9 +61,9 @@ interface ApprovalStore {
   reject: (flowId: string, data: ApprovalActionRequest, userId: string) => Promise<boolean>;
   escalateNode: (flowId: string, nodeId: string) => void;
   
-  generatePerformanceTasks: (contractId: string, contractTitle: string, startDate: string, endDate: string) => void;
+  generatePerformanceTasks: (contractId: string, contractTitle: string, startDate: string, endDate: string, departmentId?: string) => void;
   fetchTasks: (contractId?: string) => Promise<PerformanceTask[]>;
-  completeTask: (taskId: string) => Promise<boolean>;
+  completeTask: (taskId: string, note?: string) => Promise<boolean>;
   
   fetchChanges: (contractId?: string) => Promise<ContractChange[]>;
   submitChange: (contractId: string, reason: string, contractTitle: string, currentVersion: number, userId: string, userName: string) => Promise<ContractChange>;
@@ -76,10 +82,10 @@ interface ApprovalStore {
 }
 
 export const useApprovalStore = create<ApprovalStore>((set, get) => ({
-  approvalFlows: mockFlows,
-  approvalRules: mockRules,
-  performanceTasks: mockTasks,
-  contractChanges: mockChanges,
+  approvalFlows: initialFlows,
+  approvalRules: initialRules,
+  performanceTasks: initialTasks,
+  contractChanges: initialChanges,
   dashboardStats: null,
   warnings: [],
   loading: false,
@@ -122,6 +128,7 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
     set((state) => ({
       approvalFlows: [newFlow, ...state.approvalFlows],
     }));
+    savePersist('approvalFlows', get().approvalFlows);
 
     return newFlow;
   },
@@ -196,6 +203,7 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
       }
     }
     
+    savePersist('approvalFlows', get().approvalFlows);
     return true;
   },
   
@@ -234,6 +242,7 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
       useContractStore.getState().updateContractStatus(contractId, 'rejected');
     }
     
+    savePersist('approvalFlows', get().approvalFlows);
     return true;
   },
   
@@ -250,18 +259,20 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
         };
       }),
     }));
+    savePersist('approvalFlows', get().approvalFlows);
   },
 
-  generatePerformanceTasks: (contractId, contractTitle, startDate, endDate) => {
+  generatePerformanceTasks: (contractId, contractTitle, startDate, endDate, departmentId) => {
     const taskTypes = [
-      { type: 'payment' as const, name: '付款节点', offsetDays: 10 },
-      { type: 'delivery' as const, name: '交货节点', offsetDays: 30 },
-      { type: 'acceptance' as const, name: '验收节点', offsetDays: 60 },
+      { type: 'payment' as const, name: '付款节点', offsetDays: 10, role: 'manager' },
+      { type: 'delivery' as const, name: '交货节点', offsetDays: 30, role: 'operator' },
+      { type: 'acceptance' as const, name: '验收节点', offsetDays: 60, role: 'manager' },
     ];
 
     const newTasks: PerformanceTask[] = taskTypes.map((task, idx) => {
       const plannedDate = addDays(startDate, task.offsetDays);
       const isPast = new Date(plannedDate) < new Date();
+      const assignee = getApproverForRole(task.role, departmentId);
       
       return {
         id: `task_${contractId}_${idx}_${Date.now()}`,
@@ -273,6 +284,9 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
         plannedDate,
         actualDate: undefined,
         status: isPast ? 'overdue' : 'pending',
+        assigneeId: assignee.id,
+        assigneeName: assignee.name,
+        completeNote: '',
         reminderSent: false,
         createdAt: new Date().toISOString().split('T')[0],
       };
@@ -281,6 +295,7 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
     set((state) => ({
       performanceTasks: [...newTasks, ...state.performanceTasks],
     }));
+    savePersist('performanceTasks', get().performanceTasks);
   },
   
   fetchTasks: async (contractId) => {
@@ -292,14 +307,20 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
     return tasks;
   },
   
-  completeTask: async (taskId) => {
+  completeTask: async (taskId, note) => {
     await new Promise(resolve => setTimeout(resolve, 200));
     
     set((state) => ({
       performanceTasks: state.performanceTasks.map(t => 
-        t.id === taskId ? { ...t, status: 'completed' as const, actualDate: new Date().toISOString().split('T')[0] } : t
+        t.id === taskId ? { 
+          ...t, 
+          status: 'completed' as const, 
+          actualDate: new Date().toISOString().split('T')[0],
+          completeNote: note || t.completeNote,
+        } : t
       ),
     }));
+    savePersist('performanceTasks', get().performanceTasks);
     
     return true;
   },
@@ -330,6 +351,7 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
     };
     
     set((state) => ({ contractChanges: [newChange, ...state.contractChanges] }));
+    savePersist('contractChanges', get().contractChanges);
     return newChange;
   },
 
@@ -339,6 +361,7 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
         c.id === changeId ? { ...c, status: 'approved' as const } : c
       ),
     }));
+    savePersist('contractChanges', get().contractChanges);
   },
 
   rejectChange: (changeId) => {
@@ -347,6 +370,7 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
         c.id === changeId ? { ...c, status: 'rejected' as const } : c
       ),
     }));
+    savePersist('contractChanges', get().contractChanges);
   },
   
   fetchDashboardStats: async () => {
@@ -416,16 +440,19 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
       id: `rule_${Date.now()}`,
     };
     set((state) => ({ approvalRules: [...state.approvalRules, newRule] }));
+    savePersist('approvalRules', get().approvalRules);
   },
   
   updateApprovalRule: (id, data) => {
     set((state) => ({
       approvalRules: state.approvalRules.map(r => r.id === id ? { ...r, ...data } : r),
     }));
+    savePersist('approvalRules', get().approvalRules);
   },
   
   deleteApprovalRule: (id) => {
     set((state) => ({ approvalRules: state.approvalRules.filter(r => r.id !== id) }));
+    savePersist('approvalRules', get().approvalRules);
   },
   
   determineApprovalNodes: (type, amount, riskLevel) => {

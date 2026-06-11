@@ -11,6 +11,9 @@ export interface PerformanceTask {
   plannedDate: string;
   actualDate?: string;
   status: TaskStatus;
+  assigneeId?: string;
+  assigneeName?: string;
+  completeNote?: string;
   reminderSent: boolean;
   createdAt: string;
 }

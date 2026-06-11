@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Edit, Send, FileText, Clock, AlertTriangle, CheckCircle, XCircle, User, Building2, Calendar, Hash, DollarSign, FileUp, FileSignature, Archive, CheckSquare, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Edit, Send, FileText, Clock, AlertTriangle, CheckCircle, XCircle, User, Building2, Calendar, Hash, DollarSign, FileUp, FileSignature, Archive, CheckSquare, RotateCcw, Award, Shield, Copy } from 'lucide-react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/common/Card';
 import { StatusBadge } from '../../components/common/StatusBadge';
@@ -9,7 +9,7 @@ import { Modal, ModalFooter } from '../../components/common/Modal';
 import { useContractStore } from '../../store/useContractStore';
 import { useApprovalStore } from '../../store/useApprovalStore';
 import { useUserStore } from '../../store/useUserStore';
-import type { Contract, ApprovalFlow, PerformanceTask, ContractChange } from '../../types';
+import type { Contract, ApprovalFlow, PerformanceTask, ContractChange, ArchiveInfo } from '../../types';
 import { formatCurrency, formatDate, formatDateTime, formatContractType, getHoursRemaining, formatTaskType, formatUserRole } from '../../utils/format';
 import { canEditContract, canSubmitApproval, canViewContract, canApprove } from '../../utils/permission';
 
@@ -29,6 +29,9 @@ export default function ContractDetailPage() {
   const [submitModal, setSubmitModal] = useState(false);
   const [signModal, setSignModal] = useState(false);
   const [archiveModal, setArchiveModal] = useState(false);
+  const [archiveCertModal, setArchiveCertModal] = useState(false);
+  const [completeTaskModal, setCompleteTaskModal] = useState<{ open: boolean; taskId: string }>({ open: false, taskId: '' });
+  const [completeNote, setCompleteNote] = useState('');
   const initialTab = searchParams.get('tab') as 'approval' | 'tasks' | 'changes' | 'info' | null;
   const [activeTab, setActiveTab] = useState<'info' | 'approval' | 'tasks' | 'changes'>(initialTab && ['approval', 'tasks', 'changes', 'info'].includes(initialTab) ? initialTab : 'info');
   const [approvalModal, setApprovalModal] = useState<{ open: boolean; approve: boolean; nodeId?: string }>({ open: false, approve: true });
@@ -135,8 +138,16 @@ export default function ContractDetailPage() {
   };
 
   const handleCompleteTask = async (taskId: string) => {
-    const success = await completeTask(taskId);
+    setCompleteTaskModal({ open: true, taskId });
+    setCompleteNote('');
+  };
+
+  const confirmCompleteTask = async () => {
+    if (!completeTaskModal.taskId) return;
+    const success = await completeTask(completeTaskModal.taskId, completeNote);
     if (success) {
+      setCompleteTaskModal({ open: false, taskId: '' });
+      setCompleteNote('');
       loadData();
     }
   };
@@ -268,7 +279,20 @@ export default function ContractDetailPage() {
             </div>
             <div className="text-center">
               <p className="text-sm text-gray-500">归档编号</p>
-              <p className="text-lg font-mono font-semibold text-gray-500 mt-1">{contract.archiveNo || '-'}</p>
+              <div className="flex items-center justify-center gap-2 mt-1">
+                <p className={`text-lg font-mono font-semibold ${contract.archiveNo ? 'text-primary-600' : 'text-gray-400'}`}>
+                  {contract.archiveNo || '-'}
+                </p>
+                {contract.archiveInfo && (
+                  <button
+                    onClick={() => setArchiveCertModal(true)}
+                    className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-0.5"
+                  >
+                    <Award className="w-3.5 h-3.5" />
+                    查看凭证
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -375,6 +399,34 @@ export default function ContractDetailPage() {
                     </CardContent>
                   </Card>
                 </div>
+
+                {contract.archiveInfo && (
+                  <Card className="border-primary-200 bg-primary-50/50">
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-base flex items-center gap-2">
+                          <Award className="w-5 h-5 text-primary-600" />
+                          归档凭证信息
+                        </CardTitle>
+                        <Button variant="secondary" size="sm" onClick={() => setArchiveCertModal(true)}>
+                          查看凭证
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <InfoItem label="凭证编号" value={contract.archiveInfo.archiveNo} icon={Hash} />
+                        <InfoItem label="归档时间" value={formatDateTime(contract.archiveInfo.archivedAt)} icon={Calendar} />
+                        <InfoItem label="经办人" value={contract.archiveInfo.archivedByName} icon={User} />
+                        <InfoItem label="签署日期" value={formatDate(contract.archiveInfo.signDate)} icon={FileSignature} />
+                      </div>
+                      <div className="mt-4">
+                        <p className="text-sm text-gray-500 mb-1">合同摘要</p>
+                        <p className="text-sm text-gray-700">{contract.archiveInfo.summary}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
 
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">合同内容</h3>
@@ -553,35 +605,49 @@ export default function ContractDetailPage() {
                 {tasks.length > 0 ? (
                   <div className="space-y-4">
                     {tasks.map((task) => (
-                      <div key={task.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                          task.status === 'completed' ? 'bg-green-100' :
-                          task.status === 'overdue' ? 'bg-red-100' : 'bg-yellow-100'
-                        }`}>
-                          {task.status === 'completed' && <CheckCircle className="w-5 h-5 text-green-600" />}
-                          {task.status === 'overdue' && <XCircle className="w-5 h-5 text-red-600" />}
-                          {task.status === 'pending' && <Clock className="w-5 h-5 text-yellow-600" />}
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-gray-900">{task.name}</span>
-                            <span className="px-2 py-0.5 text-xs bg-gray-200 text-gray-700 rounded">
-                              {formatTaskType(task.type)}
-                            </span>
-                            <StatusBadge type="task" status={task.status} />
+                      <div key={task.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <div className="flex items-start gap-4">
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                            task.status === 'completed' ? 'bg-green-100' :
+                            task.status === 'overdue' ? 'bg-red-100' : 'bg-yellow-100'
+                          }`}>
+                            {task.status === 'completed' && <CheckCircle className="w-5 h-5 text-green-600" />}
+                            {task.status === 'overdue' && <XCircle className="w-5 h-5 text-red-600" />}
+                            {task.status === 'pending' && <Clock className="w-5 h-5 text-yellow-600" />}
                           </div>
-                          <p className="text-sm text-gray-500 mt-1">{task.description}</p>
-                          <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
-                            <span>计划日期：{formatDate(task.plannedDate)}</span>
-                            {task.actualDate && <span>实际日期：{formatDate(task.actualDate)}</span>}
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium text-gray-900">{task.name}</span>
+                              <span className="px-2 py-0.5 text-xs bg-gray-200 text-gray-700 rounded">
+                                {formatTaskType(task.type)}
+                              </span>
+                              <StatusBadge type="task" status={task.status} />
+                              {task.assigneeName && (
+                                <span className="text-xs text-gray-500 flex items-center gap-1">
+                                  <User className="w-3 h-3" />
+                                  负责人：{task.assigneeName}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-sm text-gray-500 mt-1">{task.description}</p>
+                            <div className="flex items-center gap-4 mt-2 text-xs text-gray-400 flex-wrap">
+                              <span>计划日期：{formatDate(task.plannedDate)}</span>
+                              {task.actualDate && <span>完成日期：{formatDate(task.actualDate)}</span>}
+                            </div>
+                            {task.completeNote && (
+                              <div className="mt-3 p-3 bg-white rounded border border-gray-100">
+                                <p className="text-xs text-gray-500 mb-1">完成说明</p>
+                                <p className="text-sm text-gray-700">{task.completeNote}</p>
+                              </div>
+                            )}
                           </div>
+                          {task.status === 'pending' && (
+                            <Button variant="primary" size="sm" onClick={() => handleCompleteTask(task.id)}>
+                              <CheckSquare className="w-4 h-4 mr-1" />
+                              标记完成
+                            </Button>
+                          )}
                         </div>
-                        {task.status === 'pending' && (
-                          <Button variant="secondary" size="sm" onClick={() => handleCompleteTask(task.id)}>
-                            <CheckSquare className="w-4 h-4 mr-1" />
-                            标记完成
-                          </Button>
-                        )}
                       </div>
                     ))}
                   </div>
@@ -754,6 +820,126 @@ export default function ContractDetailPage() {
               {processing ? '处理中...' : '确认驳回'}
             </Button>
           )}
+        </ModalFooter>
+      </Modal>
+
+      <Modal
+        isOpen={archiveCertModal}
+        onClose={() => setArchiveCertModal(false)}
+        title="归档凭证"
+        size="md"
+      >
+        {contract.archiveInfo && (
+          <div className="space-y-6">
+            <div className="bg-gradient-to-br from-primary-50 to-primary-100 rounded-xl p-6 border border-primary-200">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-primary-600 rounded-full flex items-center justify-center">
+                    <Shield className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-primary-900">合同归档凭证</h3>
+                    <p className="text-sm text-primary-700">Contract Archive Certificate</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-primary-600">凭证编号</p>
+                  <p className="font-mono font-bold text-primary-800">{contract.archiveInfo.archiveNo}</p>
+                </div>
+              </div>
+              
+              <div className="bg-white/60 rounded-lg p-4 space-y-3">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-gray-500">合同名称</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">{contract.title}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">合同编号</p>
+                    <p className="text-sm font-mono font-medium text-gray-900 mt-0.5">{contract.contractNo}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">合同金额</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">{formatCurrency(contract.amount)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">合同版本</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">V{contract.version}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">签署日期</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">{formatDate(contract.archiveInfo.signDate)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">归档时间</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">{formatDateTime(contract.archiveInfo.archivedAt)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">经办人</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">{contract.archiveInfo.archivedByName}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">所属部门</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">{contract.departmentName}</p>
+                  </div>
+                </div>
+                <div className="pt-3 border-t border-gray-200">
+                  <p className="text-xs text-gray-500 mb-1">合同摘要</p>
+                  <p className="text-sm text-gray-700 leading-relaxed">{contract.archiveInfo.summary}</p>
+                </div>
+              </div>
+              
+              <div className="mt-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-green-600" />
+                  <span className="text-xs text-green-700">本凭证由系统自动生成，具有唯一编号</span>
+                </div>
+                <button
+                  onClick={() => {
+                    if (contract.archiveInfo) {
+                      navigator.clipboard.writeText(contract.archiveInfo.archiveNo);
+                    }
+                  }}
+                  className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  复制编号
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setArchiveCertModal(false)}>
+            关闭
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      <Modal
+        isOpen={completeTaskModal.open}
+        onClose={() => setCompleteTaskModal({ open: false, taskId: '' })}
+        title="完成履约任务"
+        size="md"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">请填写任务完成说明：</p>
+          <textarea
+            value={completeNote}
+            onChange={(e) => setCompleteNote(e.target.value)}
+            placeholder="请描述任务完成情况..."
+            rows={5}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+          />
+        </div>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setCompleteTaskModal({ open: false, taskId: '' })}>
+            取消
+          </Button>
+          <Button variant="primary" onClick={confirmCompleteTask} disabled={!completeNote.trim()}>
+            <CheckCircle className="w-4 h-4 mr-1.5" />
+            确认完成
+          </Button>
         </ModalFooter>
       </Modal>
     </DashboardLayout>

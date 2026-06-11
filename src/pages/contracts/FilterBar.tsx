@@ -13,7 +13,7 @@ interface FilterBarProps {
 }
 
 const contractTypes: ContractType[] = ['purchase', 'sales', 'service', 'labor', 'other'];
-const contractStatuses: ContractStatus[] = ['draft', 'pending_approval', 'approving', 'approved', 'signing', 'signed', 'performing', 'completed', 'expired', 'terminated'];
+const contractStatuses: ContractStatus[] = ['draft', 'pending_approval', 'approving', 'approved', 'signing', 'signed', 'performing', 'completed', 'expired', 'terminated', 'rejected'];
 
 export function FilterBar({ filter, onFilterChange, onExport, onCreate }: FilterBarProps) {
   const [showFilters, setShowFilters] = useState(false);

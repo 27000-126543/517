@@ -1,5 +1,14 @@
 import type { ContractType, ContractStatus, RiskLevel } from './common';
 
+export interface ArchiveInfo {
+  archiveNo: string;
+  archivedAt: string;
+  archivedBy: string;
+  archivedByName: string;
+  summary: string;
+  signDate: string;
+}
+
 export interface Contract {
   id: string;
   contractNo: string;
@@ -21,6 +30,7 @@ export interface Contract {
   templateId?: string;
   version: number;
   archiveNo?: string;
+  archiveInfo?: ArchiveInfo;
   createdAt: string;
   updatedAt: string;
 }

@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, CheckCircle, Clock, XCircle, Eye, Calendar, DollarSign, Truck, ClipboardCheck, CheckSquare, AlertTriangle } from 'lucide-react';
+import { FileText, CheckCircle, Clock, XCircle, Eye, Calendar, DollarSign, Truck, ClipboardCheck, CheckSquare, AlertTriangle, User } from 'lucide-react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/common/Card';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { Button } from '../../components/common/Button';
 import { Table } from '../../components/common/Table';
+import { Modal, ModalFooter } from '../../components/common/Modal';
 import type { Column } from '../../components/common/Table';
 import { useApprovalStore } from '../../store/useApprovalStore';
 import { useContractStore } from '../../store/useContractStore';
@@ -25,6 +26,8 @@ export default function PerformanceTasksPage() {
   const [tasks, setTasks] = useState<PerformanceTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<TaskFilter>('all');
+  const [completeModal, setCompleteModal] = useState<{ open: boolean; taskId: string }>({ open: false, taskId: '' });
+  const [completeNote, setCompleteNote] = useState('');
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -45,8 +48,16 @@ export default function PerformanceTasksPage() {
   }, [loadData]);
 
   const handleComplete = async (taskId: string) => {
-    const success = await completeTask(taskId);
+    setCompleteModal({ open: true, taskId });
+    setCompleteNote('');
+  };
+
+  const confirmComplete = async () => {
+    if (!completeModal.taskId) return;
+    const success = await completeTask(completeModal.taskId, completeNote);
     if (success) {
+      setCompleteModal({ open: false, taskId: '' });
+      setCompleteNote('');
       loadData();
     }
   };
@@ -92,6 +103,17 @@ export default function PerformanceTasksPage() {
             </div>
             <p className="text-xs text-gray-500 mt-0.5">{row.contractTitle}</p>
           </div>
+        </div>
+      ),
+    },
+    {
+      key: 'assignee',
+      title: '负责人',
+      width: '100px',
+      render: (row) => (
+        <div className="flex items-center gap-1.5 text-sm text-gray-600">
+          <User className="w-4 h-4 text-gray-400" />
+          <span>{row.assigneeName || '-'}</span>
         </div>
       ),
     },
@@ -282,6 +304,33 @@ export default function PerformanceTasksPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Modal
+        isOpen={completeModal.open}
+        onClose={() => setCompleteModal({ open: false, taskId: '' })}
+        title="完成履约任务"
+        size="md"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">请填写任务完成说明：</p>
+          <textarea
+            value={completeNote}
+            onChange={(e) => setCompleteNote(e.target.value)}
+            placeholder="请描述任务完成情况..."
+            rows={5}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+          />
+        </div>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setCompleteModal({ open: false, taskId: '' })}>
+            取消
+          </Button>
+          <Button variant="primary" onClick={confirmComplete} disabled={!completeNote.trim()}>
+            <CheckCircle className="w-4 h-4 mr-1.5" />
+            确认完成
+          </Button>
+        </ModalFooter>
+      </Modal>
     </DashboardLayout>
   );
 }
