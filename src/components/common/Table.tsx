@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { clsx } from 'clsx';
 
-interface Column<T> {
+export interface Column<T> {
   key: string;
   title: string;
   render?: (row: T) => ReactNode;

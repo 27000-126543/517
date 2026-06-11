@@ -1,4 +1,4 @@
-import type { ApprovalStatus } from './common';
+import type { ApprovalStatus, RiskLevel } from './common';
 
 export interface ApprovalNode {
   id: string;
@@ -34,10 +34,11 @@ export interface ApprovalActionRequest {
 
 export interface ApprovalRule {
   id: string;
+  name: string;
   type: string;
   minAmount: number;
   maxAmount: number;
-  riskLevel: string;
+  riskLevel: RiskLevel;
   approvalNodes: Array<{
     name: string;
     role?: string;

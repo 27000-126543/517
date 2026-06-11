@@ -3,6 +3,13 @@ import DashboardPage from "@/pages/dashboard";
 import ContractListPage from "@/pages/contracts/List";
 import ContractDetailPage from "@/pages/contracts/Detail";
 import ContractCreatePage from "@/pages/contracts/Create";
+import PendingApprovalsPage from "@/pages/approval/Pending";
+import ApprovedApprovalsPage from "@/pages/approval/Approved";
+import PerformanceTasksPage from "@/pages/performance/Tasks";
+import PerformanceChangesPage from "@/pages/performance/Changes";
+import WarningsPage from "@/pages/warnings/index";
+import TemplateSettingsPage from "@/pages/settings/Templates";
+import RulesSettingsPage from "@/pages/settings/Rules";
 
 export default function App() {
   return (
@@ -16,17 +23,17 @@ export default function App() {
         <Route path="/contracts/:id" element={<ContractDetailPage />} />
         <Route path="/contracts/:id/edit" element={<ContractCreatePage />} />
         
-        <Route path="/approval/pending" element={<div className="text-center py-12"><h2 className="text-xl text-gray-600">待我审批 - 开发中</h2></div>} />
-        <Route path="/approval/approved" element={<div className="text-center py-12"><h2 className="text-xl text-gray-600">我已审批 - 开发中</h2></div>} />
+        <Route path="/approval/pending" element={<PendingApprovalsPage />} />
+        <Route path="/approval/approved" element={<ApprovedApprovalsPage />} />
         
-        <Route path="/performance/tasks" element={<div className="text-center py-12"><h2 className="text-xl text-gray-600">履约任务 - 开发中</h2></div>} />
-        <Route path="/performance/changes" element={<div className="text-center py-12"><h2 className="text-xl text-gray-600">变更申请 - 开发中</h2></div>} />
+        <Route path="/performance/tasks" element={<PerformanceTasksPage />} />
+        <Route path="/performance/changes" element={<PerformanceChangesPage />} />
         
-        <Route path="/warnings" element={<div className="text-center py-12"><h2 className="text-xl text-gray-600">预警中心 - 开发中</h2></div>} />
+        <Route path="/warnings" element={<WarningsPage />} />
         
         <Route path="/settings/users" element={<div className="text-center py-12"><h2 className="text-xl text-gray-600">用户管理 - 开发中</h2></div>} />
-        <Route path="/settings/templates" element={<div className="text-center py-12"><h2 className="text-xl text-gray-600">模板管理 - 开发中</h2></div>} />
-        <Route path="/settings/rules" element={<div className="text-center py-12"><h2 className="text-xl text-gray-600">审批规则 - 开发中</h2></div>} />
+        <Route path="/settings/templates" element={<TemplateSettingsPage />} />
+        <Route path="/settings/rules" element={<RulesSettingsPage />} />
         
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

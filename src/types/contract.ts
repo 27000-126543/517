@@ -51,7 +51,8 @@ export interface Template {
   name: string;
   type: ContractType;
   content: string;
-  riskTips: string[];
+  riskLevel: RiskLevel;
+  riskTips?: string[];
   createdAt: string;
 }
 

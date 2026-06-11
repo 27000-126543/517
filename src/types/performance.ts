@@ -1,4 +1,5 @@
 import type { TaskType, TaskStatus } from './common';
+export type WarningType = 'expiry' | 'approval_timeout' | 'performance_overdue';
 
 export interface PerformanceTask {
   id: string;

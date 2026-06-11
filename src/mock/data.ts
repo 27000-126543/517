@@ -87,6 +87,7 @@ export const templates: Template[] = [
     name: '标准采购合同模板',
     type: 'purchase',
     content: '采购合同模板内容...',
+    riskLevel: 'low',
     riskTips: ['注意验收标准条款', '付款条件需明确', '违约责任需对等'],
     createdAt: '2024-01-01',
   },
@@ -95,6 +96,7 @@ export const templates: Template[] = [
     name: '标准销售合同模板',
     type: 'sales',
     content: '销售合同模板内容...',
+    riskLevel: 'medium',
     riskTips: ['收款条款需明确', '交付时间需具体', '质量标准要清晰'],
     createdAt: '2024-01-01',
   },
@@ -103,6 +105,7 @@ export const templates: Template[] = [
     name: '技术服务合同模板',
     type: 'service',
     content: '服务合同模板内容...',
+    riskLevel: 'medium',
     riskTips: ['服务范围需详细', '验收标准要量化', '保密条款不可少'],
     createdAt: '2024-01-01',
   },
@@ -111,6 +114,7 @@ export const templates: Template[] = [
     name: '劳动合同模板',
     type: 'labor',
     content: '劳动合同模板内容...',
+    riskLevel: 'high',
     riskTips: ['薪资结构需明确', '试用期规定合法', '竞业限制合理'],
     createdAt: '2024-01-01',
   },
@@ -263,6 +267,7 @@ export const contractChanges: ContractChange[] = contracts.slice(0, 5).map((cont
 export const approvalRules: ApprovalRule[] = [
   {
     id: 'rule1',
+    name: '采购-低金额低风险',
     type: 'purchase',
     minAmount: 0,
     maxAmount: 100000,
@@ -271,6 +276,7 @@ export const approvalRules: ApprovalRule[] = [
   },
   {
     id: 'rule2',
+    name: '采购-中金额中风险',
     type: 'purchase',
     minAmount: 100000,
     maxAmount: 500000,
@@ -282,6 +288,7 @@ export const approvalRules: ApprovalRule[] = [
   },
   {
     id: 'rule3',
+    name: '采购-高金额高风险',
     type: 'purchase',
     minAmount: 500000,
     maxAmount: 999999999,
@@ -295,6 +302,7 @@ export const approvalRules: ApprovalRule[] = [
   },
   {
     id: 'rule4',
+    name: '销售-低金额低风险',
     type: 'sales',
     minAmount: 0,
     maxAmount: 500000,
@@ -303,6 +311,7 @@ export const approvalRules: ApprovalRule[] = [
   },
   {
     id: 'rule5',
+    name: '销售-高金额高风险',
     type: 'sales',
     minAmount: 500000,
     maxAmount: 999999999,

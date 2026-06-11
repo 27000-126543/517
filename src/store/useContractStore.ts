@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Contract, ContractFilter, CreateContractRequest, Template, Clause, RecommendedTemplate, PaginatedResponse } from '../types';
 import { contracts as mockContracts, templates as mockTemplates, clauses as mockClauses } from '../mock/data';
 import { generateContractNo, generateArchiveNo } from '../utils/format';
+import { useApprovalStore } from './useApprovalStore';
 
 interface ContractStore {
   contracts: Contract[];
@@ -14,6 +15,8 @@ interface ContractStore {
   updateContract: (id: string, data: Partial<Contract>) => Promise<Contract>;
   deleteContract: (id: string) => void;
   submitForApproval: (id: string) => Promise<boolean>;
+  signContract: (id: string) => Promise<boolean>;
+  archiveContract: (id: string) => Promise<boolean>;
   getRecommendedTemplates: (type: string, amount: number) => RecommendedTemplate[];
   getRecommendedClauses: (type: string) => Clause[];
   addTemplate: (template: Omit<Template, 'id' | 'createdAt'>) => void;
@@ -121,9 +124,64 @@ export const useContractStore = create<ContractStore>((set, get) => ({
   submitForApproval: async (id) => {
     await new Promise(resolve => setTimeout(resolve, 300));
     
+    const contract = get().contracts.find(c => c.id === id);
+    if (!contract) return false;
+    
+    const { createApprovalFlow } = useApprovalStore.getState();
+    createApprovalFlow(
+      contract.id,
+      contract.title,
+      contract.amount,
+      contract.type,
+      contract.riskLevel,
+      contract.departmentId
+    );
+    
     set((state) => ({
       contracts: state.contracts.map(c => 
         c.id === id ? { ...c, status: 'approving', updatedAt: new Date().toISOString().split('T')[0] } : c
+      ),
+    }));
+    
+    return true;
+  },
+
+  signContract: async (id) => {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    set((state) => ({
+      contracts: state.contracts.map(c => 
+        c.id === id ? { ...c, status: 'signed', signDate: new Date().toISOString().split('T')[0], updatedAt: new Date().toISOString().split('T')[0] } : c
+      ),
+    }));
+    
+    const contract = get().contracts.find(c => c.id === id);
+    if (contract) {
+      const { generatePerformanceTasks } = useApprovalStore.getState();
+      generatePerformanceTasks(
+        contract.id,
+        contract.title,
+        contract.startDate,
+        contract.endDate
+      );
+    }
+    
+    return true;
+  },
+
+  archiveContract: async (id) => {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    const archiveNo = generateArchiveNo();
+    
+    set((state) => ({
+      contracts: state.contracts.map(c => 
+        c.id === id ? { 
+          ...c, 
+          status: 'performing', 
+          archiveNo, 
+          updatedAt: new Date().toISOString().split('T')[0] 
+        } : c
       ),
     }));
     

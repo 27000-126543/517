@@ -1,6 +1,39 @@
 import { create } from 'zustand';
-import type { ApprovalFlow, ApprovalActionRequest, ApprovalRule, PerformanceTask, ContractChange, DashboardStats, Warning } from '../types';
-import { approvalFlows as mockFlows, approvalRules as mockRules, performanceTasks as mockTasks, contractChanges as mockChanges, getDashboardStats } from '../mock/data';
+import type { ApprovalFlow, ApprovalActionRequest, ApprovalRule, PerformanceTask, ContractChange, DashboardStats, Warning, ApprovalNode } from '../types';
+import { approvalFlows as mockFlows, approvalRules as mockRules, performanceTasks as mockTasks, contractChanges as mockChanges, getDashboardStats, users, departments } from '../mock/data';
+
+function addHours(date: Date, hours: number): Date {
+  return new Date(date.getTime() + hours * 60 * 60 * 1000);
+}
+
+function addDays(dateStr: string, days: number): string {
+  const date = new Date(dateStr);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().split('T')[0];
+}
+
+function getApproverForRole(role: string, departmentId?: string): { id: string; name: string } {
+  if (role === 'legal') {
+    const legal = users.find(u => u.role === 'legal');
+    return legal ? { id: legal.id, name: legal.name } : { id: 'user6', name: '孙八' };
+  }
+  if (role === 'admin') {
+    const admin = users.find(u => u.role === 'admin');
+    return admin ? { id: admin.id, name: admin.name } : { id: 'user1', name: '系统管理员' };
+  }
+  if (role === 'manager') {
+    if (departmentId) {
+      const dept = departments.find(d => d.id === departmentId);
+      if (dept && dept.managerId) {
+        const manager = users.find(u => u.id === dept.managerId);
+        if (manager) return { id: manager.id, name: manager.name };
+      }
+    }
+    const anyManager = users.find(u => u.role === 'manager');
+    return anyManager ? { id: anyManager.id, name: anyManager.name } : { id: 'user2', name: '李四' };
+  }
+  return { id: 'user1', name: '系统管理员' };
+}
 
 interface ApprovalStore {
   approvalFlows: ApprovalFlow[];
@@ -11,18 +44,24 @@ interface ApprovalStore {
   warnings: Warning[];
   loading: boolean;
   
+  createApprovalFlow: (contractId: string, contractTitle: string, contractAmount: number, type: string, riskLevel: string, departmentId?: string) => ApprovalFlow;
   fetchPendingApprovals: () => Promise<ApprovalFlow[]>;
+  fetchPendingApprovalsForUser: (userId: string) => ApprovalFlow[];
+  fetchApprovedApprovalsForUser: (userId: string) => ApprovalFlow[];
   fetchApprovedApprovals: () => Promise<ApprovalFlow[]>;
   fetchApprovalFlow: (contractId: string) => ApprovalFlow | undefined;
-  approve: (flowId: string, data: ApprovalActionRequest) => Promise<boolean>;
-  reject: (flowId: string, data: ApprovalActionRequest) => Promise<boolean>;
+  approve: (flowId: string, data: ApprovalActionRequest, userId: string) => Promise<boolean>;
+  reject: (flowId: string, data: ApprovalActionRequest, userId: string) => Promise<boolean>;
   escalateNode: (flowId: string, nodeId: string) => void;
   
+  generatePerformanceTasks: (contractId: string, contractTitle: string, startDate: string, endDate: string) => void;
   fetchTasks: (contractId?: string) => Promise<PerformanceTask[]>;
   completeTask: (taskId: string) => Promise<boolean>;
   
   fetchChanges: (contractId?: string) => Promise<ContractChange[]>;
-  submitChange: (contractId: string, reason: string) => Promise<ContractChange>;
+  submitChange: (contractId: string, reason: string, contractTitle: string, currentVersion: number, userId: string, userName: string) => Promise<ContractChange>;
+  approveChange: (changeId: string) => void;
+  rejectChange: (changeId: string) => void;
   
   fetchDashboardStats: () => Promise<DashboardStats>;
   fetchWarnings: () => Promise<Warning[]>;
@@ -43,10 +82,66 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
   dashboardStats: null,
   warnings: [],
   loading: false,
+
+  createApprovalFlow: (contractId, contractTitle, contractAmount, type, riskLevel, departmentId) => {
+    const nodeDefinitions = get().determineApprovalNodes(type, contractAmount, riskLevel);
+    const now = new Date();
+    
+    const nodes: ApprovalNode[] = nodeDefinitions.map((nodeDef, index) => {
+      const approver = nodeDef.userId 
+        ? { id: nodeDef.userId, name: users.find(u => u.id === nodeDef.userId)?.name || '审批人' }
+        : getApproverForRole(nodeDef.role || 'manager', departmentId);
+      
+      return {
+        id: `node_${contractId}_${index}_${Date.now()}`,
+        flowId: `flow_${contractId}_${Date.now()}`,
+        nodeIndex: index,
+        nodeName: nodeDef.name,
+        approverId: approver.id,
+        approverName: approver.name,
+        status: index === 0 ? 'pending' : 'pending',
+        deadline: addHours(now, 48).toISOString(),
+        createdAt: now.toISOString(),
+      };
+    });
+    
+    nodes[0].status = 'pending';
+
+    const newFlow: ApprovalFlow = {
+      id: `flow_${contractId}_${Date.now()}`,
+      contractId,
+      contractTitle,
+      contractAmount,
+      nodes,
+      currentNodeIndex: 0,
+      status: 'approving',
+      createdAt: now.toISOString(),
+    };
+
+    set((state) => ({
+      approvalFlows: [newFlow, ...state.approvalFlows],
+    }));
+
+    return newFlow;
+  },
   
   fetchPendingApprovals: async () => {
     await new Promise(resolve => setTimeout(resolve, 200));
     return get().approvalFlows.filter(f => f.status === 'approving');
+  },
+
+  fetchPendingApprovalsForUser: (userId) => {
+    return get().approvalFlows.filter(f => {
+      if (f.status !== 'approving') return false;
+      const currentNode = f.nodes[f.currentNodeIndex];
+      return currentNode && currentNode.approverId === userId && currentNode.status === 'pending';
+    });
+  },
+
+  fetchApprovedApprovalsForUser: (userId) => {
+    return get().approvalFlows.filter(f => {
+      return f.nodes.some(n => n.approverId === userId && (n.status === 'approved' || n.status === 'rejected'));
+    });
   },
   
   fetchApprovedApprovals: async () => {
@@ -58,8 +153,11 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
     return get().approvalFlows.find(f => f.contractId === contractId);
   },
   
-  approve: async (flowId, data) => {
+  approve: async (flowId, data, userId) => {
     await new Promise(resolve => setTimeout(resolve, 300));
+    
+    let contractId = '';
+    let allApproved = false;
     
     set((state) => {
       const flows = state.approvalFlows.map(flow => {
@@ -76,7 +174,8 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
         });
         
         const currentNodeIndex = nodes.findIndex(n => n.status === 'pending');
-        const allApproved = nodes.every(n => n.status === 'approved');
+        allApproved = nodes.every(n => n.status === 'approved');
+        contractId = flow.contractId;
         
         return {
           ...flow,
@@ -92,7 +191,7 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
     return true;
   },
   
-  reject: async (flowId, data) => {
+  reject: async (flowId, data, userId) => {
     await new Promise(resolve => setTimeout(resolve, 300));
     
     set((state) => {
@@ -136,6 +235,37 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
       }),
     }));
   },
+
+  generatePerformanceTasks: (contractId, contractTitle, startDate, endDate) => {
+    const taskTypes = [
+      { type: 'payment' as const, name: '付款节点', offsetDays: 10 },
+      { type: 'delivery' as const, name: '交货节点', offsetDays: 30 },
+      { type: 'acceptance' as const, name: '验收节点', offsetDays: 60 },
+    ];
+
+    const newTasks: PerformanceTask[] = taskTypes.map((task, idx) => {
+      const plannedDate = addDays(startDate, task.offsetDays);
+      const isPast = new Date(plannedDate) < new Date();
+      
+      return {
+        id: `task_${contractId}_${idx}_${Date.now()}`,
+        contractId,
+        contractTitle,
+        type: task.type,
+        name: task.name,
+        description: `请按时完成${task.name}相关工作`,
+        plannedDate,
+        actualDate: undefined,
+        status: isPast ? 'overdue' : 'pending',
+        reminderSent: false,
+        createdAt: new Date().toISOString().split('T')[0],
+      };
+    });
+
+    set((state) => ({
+      performanceTasks: [...newTasks, ...state.performanceTasks],
+    }));
+  },
   
   fetchTasks: async (contractId) => {
     await new Promise(resolve => setTimeout(resolve, 200));
@@ -167,25 +297,40 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
     return changes;
   },
   
-  submitChange: async (contractId, reason) => {
+  submitChange: async (contractId, reason, contractTitle, currentVersion, userId, userName) => {
     await new Promise(resolve => setTimeout(resolve, 300));
     
-    const contract = get().approvalFlows.find(f => f.contractId === contractId);
     const newChange: ContractChange = {
-      id: `change${Date.now()}`,
+      id: `change_${contractId}_${Date.now()}`,
       contractId,
-      contractTitle: contract?.contractTitle,
-      oldVersion: 1,
-      newVersion: 2,
+      contractTitle,
+      oldVersion: currentVersion,
+      newVersion: currentVersion + 1,
       reason,
       status: 'pending',
-      createdBy: 'user1',
-      createdByName: '系统管理员',
+      createdBy: userId,
+      createdByName: userName,
       createdAt: new Date().toISOString().split('T')[0],
     };
     
     set((state) => ({ contractChanges: [newChange, ...state.contractChanges] }));
     return newChange;
+  },
+
+  approveChange: (changeId) => {
+    set((state) => ({
+      contractChanges: state.contractChanges.map(c =>
+        c.id === changeId ? { ...c, status: 'approved' as const } : c
+      ),
+    }));
+  },
+
+  rejectChange: (changeId) => {
+    set((state) => ({
+      contractChanges: state.contractChanges.map(c =>
+        c.id === changeId ? { ...c, status: 'rejected' as const } : c
+      ),
+    }));
   },
   
   fetchDashboardStats: async () => {
@@ -252,7 +397,7 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
   addApprovalRule: (rule) => {
     const newRule: ApprovalRule = {
       ...rule,
-      id: `rule${Date.now()}`,
+      id: `rule_${Date.now()}`,
     };
     set((state) => ({ approvalRules: [...state.approvalRules, newRule] }));
   },
@@ -279,9 +424,19 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
       return rule.approvalNodes;
     }
     
-    return [
+    const fallbackNodes: Array<{ name: string; role?: string }> = [
       { name: '部门主管审批', role: 'manager' },
-      { name: '法务审核', role: 'legal' },
     ];
+    
+    if (amount > 100000) {
+      fallbackNodes.push({ name: '财务主管审批', role: 'manager' });
+    }
+    
+    if (amount > 500000 || riskLevel === 'high') {
+      fallbackNodes.push({ name: '法务审核', role: 'legal' });
+      fallbackNodes.push({ name: '总经理审批', role: 'admin' });
+    }
+    
+    return fallbackNodes;
   },
 }));
