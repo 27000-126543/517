@@ -47,7 +47,7 @@ export function canEditContract(contract: Contract, user: PermissionCheck): bool
 }
 
 export function canSubmitApproval(contract: Contract, user: PermissionCheck): boolean {
-  if (contract.status !== 'draft' && contract.status !== 'pending_approval') {
+  if (contract.status !== 'draft' && contract.status !== 'pending_approval' && contract.status !== 'rejected') {
     return false;
   }
   

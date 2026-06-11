@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Edit, Send, FileText, Clock, AlertTriangle, CheckCircle, XCircle, User, Building2, Calendar, Hash, DollarSign, FileUp, FileSignature, Archive, CheckSquare } from 'lucide-react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Edit, Send, FileText, Clock, AlertTriangle, CheckCircle, XCircle, User, Building2, Calendar, Hash, DollarSign, FileUp, FileSignature, Archive, CheckSquare, RotateCcw } from 'lucide-react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/common/Card';
 import { StatusBadge } from '../../components/common/StatusBadge';
@@ -16,7 +16,8 @@ import { canEditContract, canSubmitApproval, canViewContract, canApprove } from 
 export default function ContractDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { fetchContract, submitForApproval, signContract, archiveContract } = useContractStore();
+  const [searchParams] = useSearchParams();
+  const { fetchContract, submitForApproval, signContract, archiveContract, updateContractStatus } = useContractStore();
   const { fetchApprovalFlow, fetchTasks, fetchChanges, completeTask, approve, reject } = useApprovalStore();
   const { currentUser } = useUserStore();
 
@@ -28,7 +29,8 @@ export default function ContractDetailPage() {
   const [submitModal, setSubmitModal] = useState(false);
   const [signModal, setSignModal] = useState(false);
   const [archiveModal, setArchiveModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<'info' | 'approval' | 'tasks' | 'changes'>('info');
+  const initialTab = searchParams.get('tab') as 'approval' | 'tasks' | 'changes' | 'info' | null;
+  const [activeTab, setActiveTab] = useState<'info' | 'approval' | 'tasks' | 'changes'>(initialTab && ['approval', 'tasks', 'changes', 'info'].includes(initialTab) ? initialTab : 'info');
   const [approvalModal, setApprovalModal] = useState<{ open: boolean; approve: boolean; nodeId?: string }>({ open: false, approve: true });
   const [approvalComment, setApprovalComment] = useState('');
   const [processing, setProcessing] = useState(false);
@@ -66,10 +68,14 @@ export default function ContractDetailPage() {
   const handleSubmitApproval = async () => {
     if (!contract) return;
     setProcessing(true);
+    if (contract.status === 'rejected') {
+      updateContractStatus(contract.id, 'approving');
+    }
     const success = await submitForApproval(contract.id);
     setProcessing(false);
     if (success) {
       setSubmitModal(false);
+      setActiveTab('approval');
       loadData();
     }
   };
@@ -196,7 +202,16 @@ export default function ContractDetailPage() {
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            {canEditContract(contract, currentUser) && (
+            {contract.status === 'rejected' && (
+              <Button
+                variant="primary"
+                onClick={() => setSubmitModal(true)}
+              >
+                <RotateCcw className="w-4 h-4 mr-1.5" />
+                重新提交审批
+              </Button>
+            )}
+            {canEditContract(contract, currentUser) && contract.status === 'draft' && (
               <Button
                 variant="secondary"
                 onClick={() => navigate(`/contracts/${contract.id}/edit`)}
@@ -477,6 +492,45 @@ export default function ContractDetailPage() {
                         );
                       })}
                     </div>
+                    {approvalFlow.status === 'approved' && (
+                      <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <CheckCircle className="w-6 h-6 text-green-600 flex-shrink-0" />
+                          <div className="flex-1">
+                            <p className="font-medium text-green-800">审批已全部通过</p>
+                            <p className="text-sm text-green-600 mt-0.5">合同已进入签署阶段，请点击上方「电子签署」按钮完成签署</p>
+                          </div>
+                          {(currentUser.role === 'admin' || currentUser.role === 'manager') && (
+                            <Button variant="primary" size="sm" onClick={() => setSignModal(true)}>
+                              <FileSignature className="w-4 h-4 mr-1" />
+                              立即签署
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {approvalFlow.status === 'rejected' && (
+                      <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <XCircle className="w-6 h-6 text-red-600 flex-shrink-0" />
+                          <div className="flex-1">
+                            <p className="font-medium text-red-800">审批已被驳回</p>
+                            <p className="text-sm text-red-600 mt-0.5">
+                              {(() => {
+                                const rejectedNode = approvalFlow.nodes.find(n => n.status === 'rejected');
+                                return rejectedNode 
+                                  ? `驳回人：${rejectedNode.approverName} · 驳回时间：${formatDateTime(rejectedNode.approvedAt || '')} · 原因：${rejectedNode.comment || '无'}`
+                                  : '请查看上方审批节点的驳回原因';
+                              })()}
+                            </p>
+                          </div>
+                          <Button variant="primary" size="sm" onClick={() => setSubmitModal(true)}>
+                            <RotateCcw className="w-4 h-4 mr-1" />
+                            重新提交
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="text-center py-12">
@@ -599,11 +653,14 @@ export default function ContractDetailPage() {
       <Modal
         isOpen={submitModal}
         onClose={() => setSubmitModal(false)}
-        title="提交审批"
+        title={contract.status === 'rejected' ? '重新提交审批' : '提交审批'}
         size="sm"
       >
         <p className="text-gray-600">
-          确定要提交合同 <span className="font-medium text-gray-900">「{contract.title}」</span> 进入审批流程吗？
+          {contract.status === 'rejected' 
+            ? <>确定要重新提交合同 <span className="font-medium text-gray-900">「{contract.title}」</span> 进入审批流程吗？</>
+            : <>确定要提交合同 <span className="font-medium text-gray-900">「{contract.title}」</span> 进入审批流程吗？</>
+          }
         </p>
         <p className="text-sm text-gray-500 mt-2">
           提交后将根据合同金额（{formatCurrency(contract.amount)}）和风险等级自动分配审批节点。
@@ -613,7 +670,7 @@ export default function ContractDetailPage() {
             取消
           </Button>
           <Button variant="primary" onClick={handleSubmitApproval} disabled={processing}>
-            {processing ? '提交中...' : '确认提交'}
+            {processing ? '提交中...' : contract.status === 'rejected' ? '重新提交' : '确认提交'}
           </Button>
         </ModalFooter>
       </Modal>

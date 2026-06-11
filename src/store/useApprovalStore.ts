@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { ApprovalFlow, ApprovalActionRequest, ApprovalRule, PerformanceTask, ContractChange, DashboardStats, Warning, ApprovalNode } from '../types';
 import { approvalFlows as mockFlows, approvalRules as mockRules, performanceTasks as mockTasks, contractChanges as mockChanges, getDashboardStats, users, departments } from '../mock/data';
+import { useContractStore } from './useContractStore';
 
 function addHours(date: Date, hours: number): Date {
   return new Date(date.getTime() + hours * 60 * 60 * 1000);
@@ -150,7 +151,8 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
   },
   
   fetchApprovalFlow: (contractId) => {
-    return get().approvalFlows.find(f => f.contractId === contractId);
+    const flows = get().approvalFlows.filter(f => f.contractId === contractId);
+    return flows.length > 0 ? flows[flows.length - 1] : undefined;
   },
   
   approve: async (flowId, data, userId) => {
@@ -188,15 +190,25 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
       return { approvalFlows: flows };
     });
     
+    if (contractId) {
+      if (allApproved) {
+        useContractStore.getState().updateContractStatus(contractId, 'approved');
+      }
+    }
+    
     return true;
   },
   
   reject: async (flowId, data, userId) => {
     await new Promise(resolve => setTimeout(resolve, 300));
     
+    let contractId = '';
+    
     set((state) => {
       const flows = state.approvalFlows.map(flow => {
         if (flow.id !== flowId) return flow;
+        
+        contractId = flow.contractId;
         
         const nodes = flow.nodes.map(node => {
           if (node.id !== data.nodeId) return node;
@@ -217,6 +229,10 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
       
       return { approvalFlows: flows };
     });
+    
+    if (contractId) {
+      useContractStore.getState().updateContractStatus(contractId, 'rejected');
+    }
     
     return true;
   },

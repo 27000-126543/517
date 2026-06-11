@@ -198,7 +198,7 @@ export default function ContractCreatePage() {
       }
       
       await submitForApproval(newContract.id);
-      navigate('/contracts');
+      navigate(`/contracts/${newContract.id}?tab=approval`);
     } finally {
       setSubmitting(false);
       setSubmitModal(false);

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Contract, ContractFilter, CreateContractRequest, Template, Clause, RecommendedTemplate, PaginatedResponse } from '../types';
+import type { Contract, ContractFilter, CreateContractRequest, Template, Clause, RecommendedTemplate, PaginatedResponse, ContractStatus } from '../types';
 import { contracts as mockContracts, templates as mockTemplates, clauses as mockClauses } from '../mock/data';
 import { generateContractNo, generateArchiveNo } from '../utils/format';
 import { useApprovalStore } from './useApprovalStore';
@@ -17,6 +17,7 @@ interface ContractStore {
   submitForApproval: (id: string) => Promise<boolean>;
   signContract: (id: string) => Promise<boolean>;
   archiveContract: (id: string) => Promise<boolean>;
+  updateContractStatus: (id: string, status: ContractStatus) => void;
   getRecommendedTemplates: (type: string, amount: number) => RecommendedTemplate[];
   getRecommendedClauses: (type: string) => Clause[];
   addTemplate: (template: Omit<Template, 'id' | 'createdAt'>) => void;
@@ -186,6 +187,14 @@ export const useContractStore = create<ContractStore>((set, get) => ({
     }));
     
     return true;
+  },
+  
+  updateContractStatus: (id, status) => {
+    set((state) => ({
+      contracts: state.contracts.map(c => 
+        c.id === id ? { ...c, status, updatedAt: new Date().toISOString().split('T')[0] } : c
+      ),
+    }));
   },
   
   getRecommendedTemplates: (type, amount) => {

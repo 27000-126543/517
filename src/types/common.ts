@@ -12,7 +12,8 @@ export type ContractStatus =
   | 'performing' 
   | 'completed' 
   | 'expired' 
-  | 'terminated';
+  | 'terminated'
+  | 'rejected';
 
 export type RiskLevel = 'low' | 'medium' | 'high';
 

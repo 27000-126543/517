@@ -64,6 +64,7 @@ export function formatContractStatus(status: ContractStatus): string {
     completed: '已完成',
     expired: '已到期',
     terminated: '已终止',
+    rejected: '已驳回',
   };
   return map[status] || status;
 }
@@ -80,6 +81,7 @@ export function getStatusColor(status: ContractStatus): string {
     completed: 'bg-emerald-100 text-emerald-700',
     expired: 'bg-orange-100 text-orange-700',
     terminated: 'bg-red-100 text-red-700',
+    rejected: 'bg-red-100 text-red-700',
   };
   return map[status] || 'bg-gray-100 text-gray-700';
 }
