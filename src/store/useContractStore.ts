@@ -168,18 +168,6 @@ export const useContractStore = create<ContractStore>((set, get) => ({
     }));
     savePersist('contracts', get().contracts);
     
-    const contract = get().contracts.find(c => c.id === id);
-    if (contract) {
-      const { generatePerformanceTasks } = useApprovalStore.getState();
-      generatePerformanceTasks(
-        contract.id,
-        contract.title,
-        contract.startDate,
-        contract.endDate,
-        contract.departmentId
-      );
-    }
-    
     return true;
   },
 
@@ -189,6 +177,8 @@ export const useContractStore = create<ContractStore>((set, get) => ({
     const archiveNo = generateArchiveNo();
     const now = new Date();
     const archivedAt = now.toISOString();
+    
+    const contract = get().contracts.find(c => c.id === id);
     
     set((state) => ({
       contracts: state.contracts.map(c => {
@@ -210,6 +200,17 @@ export const useContractStore = create<ContractStore>((set, get) => ({
       }),
     }));
     savePersist('contracts', get().contracts);
+    
+    if (contract) {
+      const { generatePerformanceTasks } = useApprovalStore.getState();
+      generatePerformanceTasks(
+        contract.id,
+        contract.title,
+        contract.startDate,
+        contract.endDate,
+        contract.departmentId
+      );
+    }
     
     return true;
   },

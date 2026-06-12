@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Edit, Send, FileText, Clock, AlertTriangle, CheckCircle, XCircle, User, Building2, Calendar, Hash, DollarSign, FileUp, FileSignature, Archive, CheckSquare, RotateCcw, Award, Shield, Copy } from 'lucide-react';
+import { ArrowLeft, Edit, Send, FileText, Clock, AlertTriangle, CheckCircle, XCircle, User, Building2, Calendar, Hash, DollarSign, FileUp, FileSignature, Archive, CheckSquare, RotateCcw, Award, Shield, Copy, TrendingUp } from 'lucide-react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/common/Card';
 import { StatusBadge } from '../../components/common/StatusBadge';
@@ -240,7 +240,7 @@ export default function ContractDetailPage() {
                 提交审批
               </Button>
             )}
-            {contract.status === 'approved' && (currentUser.role === 'admin' || currentUser.role === 'manager') && (
+            {(contract.status === 'signing' || contract.status === 'approved') && (currentUser.role === 'admin' || currentUser.role === 'manager') && (
               <Button
                 variant="primary"
                 onClick={() => setSignModal(true)}
@@ -603,7 +603,39 @@ export default function ContractDetailPage() {
             {activeTab === 'tasks' && (
               <div>
                 {tasks.length > 0 ? (
-                  <div className="space-y-4">
+                  <>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                      <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
+                        <p className="text-xs text-blue-600">全部任务</p>
+                        <p className="text-2xl font-bold text-blue-700 mt-1">{tasks.length}</p>
+                      </div>
+                      <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-100">
+                        <p className="text-xs text-yellow-600">待完成</p>
+                        <p className="text-2xl font-bold text-yellow-700 mt-1">{tasks.filter(t => t.status === 'pending').length}</p>
+                      </div>
+                      <div className="p-4 bg-green-50 rounded-lg border border-green-100">
+                        <p className="text-xs text-green-600">已完成</p>
+                        <p className="text-2xl font-bold text-green-700 mt-1">{tasks.filter(t => t.status === 'completed').length}</p>
+                      </div>
+                      <div className="p-4 bg-primary-50 rounded-lg border border-primary-100">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-xs text-primary-600">完成进度</p>
+                            <p className="text-2xl font-bold text-primary-700 mt-1">
+                              {tasks.filter(t => t.status === 'completed').length > 0 ? Math.round((tasks.filter(t => t.status === 'completed').length / tasks.length) * 100) : 0}%
+                            </p>
+                          </div>
+                          <TrendingUp className="w-6 h-6 text-primary-500" />
+                        </div>
+                        <div className="mt-2 w-full bg-primary-100 rounded-full h-1.5">
+                          <div
+                            className="bg-primary-600 h-1.5 rounded-full"
+                            style={{ width: `${tasks.filter(t => t.status === 'completed').length > 0 ? Math.round((tasks.filter(t => t.status === 'completed').length / tasks.length) * 100) : 0}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-4">
                     {tasks.map((task) => (
                       <div key={task.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
                         <div className="flex items-start gap-4">
@@ -650,7 +682,8 @@ export default function ContractDetailPage() {
                         </div>
                       </div>
                     ))}
-                  </div>
+                    </div>
+                  </>
                 ) : (
                   <div className="text-center py-12">
                     <CheckCircle className="w-16 h-16 text-gray-300 mx-auto mb-4" />

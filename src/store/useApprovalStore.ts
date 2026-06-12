@@ -199,7 +199,7 @@ export const useApprovalStore = create<ApprovalStore>((set, get) => ({
     
     if (contractId) {
       if (allApproved) {
-        useContractStore.getState().updateContractStatus(contractId, 'approved');
+        useContractStore.getState().updateContractStatus(contractId, 'signing');
       }
     }
     

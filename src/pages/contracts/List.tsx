@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, Edit, Trash2, Send } from 'lucide-react';
+import { Eye, Edit, Trash2, Send, Award, Shield, Copy, Calendar, User } from 'lucide-react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { FilterBar } from './FilterBar';
 import { Table, Pagination } from '../../components/common/Table';
@@ -9,8 +9,8 @@ import { Button } from '../../components/common/Button';
 import { Modal, ModalFooter } from '../../components/common/Modal';
 import { useContractStore } from '../../store/useContractStore';
 import { useUserStore } from '../../store/useUserStore';
-import type { Contract, ContractFilter } from '../../types';
-import { formatCurrency, formatDate, formatContractType } from '../../utils/format';
+import type { Contract, ContractFilter, ArchiveInfo } from '../../types';
+import { formatCurrency, formatDate, formatContractType, formatDateTime } from '../../utils/format';
 import { canEditContract, canSubmitApproval, canViewContract } from '../../utils/permission';
 import { truncateText } from '../../utils/format';
 
@@ -27,6 +27,8 @@ export default function ContractListPage() {
   const [loading, setLoading] = useState(false);
   const [submitModal, setSubmitModal] = useState<Contract | null>(null);
   const [deleteModal, setDeleteModal] = useState<Contract | null>(null);
+  const [archiveCertModal, setArchiveCertModal] = useState<{ open: boolean; contract: Contract | null }>({ open: false, contract: null });
+  const [archiveFilter, setArchiveFilter] = useState<'all' | 'archived' | 'unarchived'>('all');
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -39,13 +41,19 @@ export default function ContractListPage() {
       } else if (currentUser.role === 'operator') {
         filtered = filtered.filter(c => c.creatorId === currentUser.id);
       }
+
+      if (archiveFilter === 'archived') {
+        filtered = filtered.filter(c => !!c.archiveInfo);
+      } else if (archiveFilter === 'unarchived') {
+        filtered = filtered.filter(c => !c.archiveInfo);
+      }
       
       setContracts(filtered);
       setTotal(result.total);
     } finally {
       setLoading(false);
     }
-  }, [filter, page, pageSize, fetchContracts, currentUser]);
+  }, [filter, page, pageSize, fetchContracts, currentUser, archiveFilter]);
 
   useEffect(() => {
     loadData();
@@ -147,6 +155,50 @@ export default function ContractListPage() {
       ),
     },
     {
+      key: 'archiveNo',
+      title: '归档编号',
+      width: '160px',
+      render: (row: Contract) => {
+        if (!row.archiveInfo) {
+          return <span className="text-sm text-gray-300">-</span>;
+        }
+        return (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setArchiveCertModal({ open: true, contract: row });
+            }}
+            className="group flex items-center gap-1.5 text-sm font-mono text-primary-600 hover:text-primary-700"
+            title="点击查看归档凭证"
+          >
+            <Award className="w-3.5 h-3.5 text-primary-500 group-hover:text-primary-600" />
+            <span className="border-b border-dashed border-primary-400 group-hover:border-primary-600">
+              {row.archiveInfo.archiveNo}
+            </span>
+          </button>
+        );
+      },
+    },
+    {
+      key: 'archivedAt',
+      title: '归档时间',
+      width: '150px',
+      render: (row: Contract) => {
+        if (!row.archiveInfo) {
+          return <span className="text-sm text-gray-300">-</span>;
+        }
+        return (
+          <div>
+            <p className="text-sm text-gray-600">{formatDate(row.archiveInfo.archivedAt)}</p>
+            <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
+              <User className="w-3 h-3" />
+              {row.archiveInfo.archivedByName}
+            </p>
+          </div>
+        );
+      },
+    },
+    {
       key: 'creatorName',
       title: '创建人',
       width: '80px',
@@ -219,6 +271,29 @@ export default function ContractListPage() {
           onCreate={() => navigate('/contracts/create')}
         />
 
+        <div className="flex items-center gap-2 mb-4">
+          {[
+            { key: 'all' as const, label: '全部合同' },
+            { key: 'archived' as const, label: '已归档' },
+            { key: 'unarchived' as const, label: '未归档' },
+          ].map((f) => (
+            <button
+              key={f.key}
+              onClick={() => {
+                setArchiveFilter(f.key);
+                setPage(1);
+              }}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                archiveFilter === f.key
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
           <Table
             columns={columns}
@@ -283,6 +358,110 @@ export default function ContractListPage() {
           </Button>
           <Button variant="danger" onClick={() => deleteModal && handleDelete(deleteModal)}>
             确认删除
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      <Modal
+        isOpen={archiveCertModal.open}
+        onClose={() => setArchiveCertModal({ open: false, contract: null })}
+        title="归档凭证"
+        size="md"
+      >
+        {archiveCertModal.contract?.archiveInfo && (
+          <div className="space-y-6">
+            <div className="bg-gradient-to-br from-primary-50 to-primary-100 rounded-xl p-6 border border-primary-200">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-primary-600 rounded-full flex items-center justify-center">
+                    <Shield className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-primary-900">合同归档凭证</h3>
+                    <p className="text-sm text-primary-700">Contract Archive Certificate</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-primary-600">凭证编号</p>
+                  <p className="font-mono font-bold text-primary-800">{archiveCertModal.contract.archiveInfo.archiveNo}</p>
+                </div>
+              </div>
+              
+              <div className="bg-white/60 rounded-lg p-4 space-y-3">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-gray-500">合同名称</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">{archiveCertModal.contract.title}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">合同编号</p>
+                    <p className="text-sm font-mono font-medium text-gray-900 mt-0.5">{archiveCertModal.contract.contractNo}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">合同金额</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">{formatCurrency(archiveCertModal.contract.amount)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">合同版本</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">V{archiveCertModal.contract.version}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">签署日期</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">{formatDate(archiveCertModal.contract.archiveInfo.signDate)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">归档时间</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">{formatDateTime(archiveCertModal.contract.archiveInfo.archivedAt)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">经办人</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">{archiveCertModal.contract.archiveInfo.archivedByName}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">所属部门</p>
+                    <p className="text-sm font-medium text-gray-900 mt-0.5">{archiveCertModal.contract.departmentName}</p>
+                  </div>
+                </div>
+                <div className="pt-3 border-t border-gray-200">
+                  <p className="text-xs text-gray-500 mb-1">合同摘要</p>
+                  <p className="text-sm text-gray-700 leading-relaxed">{archiveCertModal.contract.archiveInfo.summary}</p>
+                </div>
+              </div>
+              
+              <div className="mt-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Eye className="w-4 h-4 text-green-600" />
+                  <span className="text-xs text-green-700">本凭证由系统自动生成，具有唯一编号</span>
+                </div>
+                <button
+                  onClick={() => {
+                    if (archiveCertModal.contract?.archiveInfo) {
+                      navigator.clipboard.writeText(archiveCertModal.contract.archiveInfo.archiveNo);
+                    }
+                  }}
+                  className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  复制编号
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setArchiveCertModal({ open: false, contract: null })}>
+            关闭
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() => {
+              if (archiveCertModal.contract) {
+                navigate(`/contracts/${archiveCertModal.contract.id}`);
+                setArchiveCertModal({ open: false, contract: null });
+              }
+            }}
+          >
+            查看合同详情
           </Button>
         </ModalFooter>
       </Modal>

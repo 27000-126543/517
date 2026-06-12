@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, CheckCircle, Clock, XCircle, Eye, Calendar, DollarSign, Truck, ClipboardCheck, CheckSquare, AlertTriangle, User } from 'lucide-react';
+import { FileText, CheckCircle, Clock, XCircle, Eye, Calendar, DollarSign, Truck, ClipboardCheck, CheckSquare, AlertTriangle, User, Filter, Search, TrendingUp } from 'lucide-react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/common/Card';
 import { StatusBadge } from '../../components/common/StatusBadge';
@@ -11,7 +11,7 @@ import type { Column } from '../../components/common/Table';
 import { useApprovalStore } from '../../store/useApprovalStore';
 import { useContractStore } from '../../store/useContractStore';
 import { useUserStore } from '../../store/useUserStore';
-import type { PerformanceTask, TaskType } from '../../types';
+import type { PerformanceTask, TaskType, TaskStatus } from '../../types';
 import { formatDate, formatTaskType } from '../../utils/format';
 import { canViewContract } from '../../utils/permission';
 
@@ -21,11 +21,15 @@ export default function PerformanceTasksPage() {
   const navigate = useNavigate();
   const { fetchTasks, completeTask } = useApprovalStore();
   const { currentUser } = useUserStore();
-  const { fetchContract } = useContractStore();
+  const { fetchContract, contracts } = useContractStore();
 
   const [tasks, setTasks] = useState<PerformanceTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<TaskFilter>('all');
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [filterContract, setFilterContract] = useState('');
+  const [filterAssignee, setFilterAssignee] = useState('');
+  const [filterOverdueOnly, setFilterOverdueOnly] = useState(false);
   const [completeModal, setCompleteModal] = useState<{ open: boolean; taskId: string }>({ open: false, taskId: '' });
   const [completeNote, setCompleteNote] = useState('');
 
@@ -62,10 +66,53 @@ export default function PerformanceTasksPage() {
     }
   };
 
+  const uniqueContracts = useMemo(() => {
+    const map = new Map<string, string>();
+    tasks.forEach(t => {
+      if (t.contractId && t.contractTitle && !map.has(t.contractId)) {
+        map.set(t.contractId, t.contractTitle);
+      }
+    });
+    return Array.from(map.entries()).map(([id, title]) => ({ id, title }));
+  }, [tasks]);
+
+  const uniqueAssignees = useMemo(() => {
+    const set = new Set<string>();
+    tasks.forEach(t => {
+      if (t.assigneeName) set.add(t.assigneeName);
+    });
+    return Array.from(set);
+  }, [tasks]);
+
   const filteredTasks = tasks.filter(task => {
-    if (filter === 'all') return true;
-    return task.status === filter;
+    if (filter === 'pending' && task.status !== 'pending') return false;
+    if (filter === 'completed' && task.status !== 'completed') return false;
+    if (filter === 'overdue' && task.status !== 'overdue') return false;
+    if (filterOverdueOnly && task.status !== 'overdue') return false;
+    if (filterContract && task.contractId !== filterContract) return false;
+    if (filterAssignee && task.assigneeName !== filterAssignee) return false;
+    if (searchKeyword) {
+      const kw = searchKeyword.toLowerCase();
+      const matched = (task.name || '').toLowerCase().includes(kw) ||
+                      (task.contractTitle || '').toLowerCase().includes(kw) ||
+                      (task.assigneeName || '').toLowerCase().includes(kw);
+      if (!matched) return false;
+    }
+    return true;
   });
+
+  const pendingCount = tasks.filter(t => t.status === 'pending').length;
+  const completedCount = tasks.filter(t => t.status === 'completed').length;
+  const overdueCount = tasks.filter(t => t.status === 'overdue').length;
+  const totalCount = tasks.length;
+  const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
+  const filters: { key: TaskFilter; label: string; count: number }[] = [
+    { key: 'all', label: '全部任务', count: tasks.length },
+    { key: 'pending', label: '待完成', count: pendingCount },
+    { key: 'completed', label: '已完成', count: completedCount },
+    { key: 'overdue', label: '已逾期', count: overdueCount },
+  ];
 
   const getTaskIcon = (type: TaskType) => {
     switch (type) {
@@ -144,11 +191,11 @@ export default function PerformanceTasksPage() {
       ),
     },
     {
-      key: 'description',
-      title: '描述',
+      key: 'note',
+      title: '完成说明',
       render: (row) => (
         <p className="text-sm text-gray-600 max-w-xs truncate">
-          {row.description}
+          {row.completeNote || <span className="text-gray-300">-</span>}
         </p>
       ),
     },
@@ -160,7 +207,7 @@ export default function PerformanceTasksPage() {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => navigate(`/contracts/${row.contractId}`)}
+            onClick={() => navigate(`/contracts/${row.contractId}?tab=tasks`)}
           >
             <Eye className="w-3.5 h-3.5 mr-1" />
             查看合同
@@ -180,36 +227,25 @@ export default function PerformanceTasksPage() {
     },
   ];
 
-  const pendingCount = tasks.filter(t => t.status === 'pending').length;
-  const completedCount = tasks.filter(t => t.status === 'completed').length;
-  const overdueCount = tasks.filter(t => t.status === 'overdue').length;
-
-  const filters: { key: TaskFilter; label: string; count: number }[] = [
-    { key: 'all', label: '全部任务', count: tasks.length },
-    { key: 'pending', label: '待完成', count: pendingCount },
-    { key: 'completed', label: '已完成', count: completedCount },
-    { key: 'overdue', label: '已逾期', count: overdueCount },
-  ];
-
   return (
     <DashboardLayout>
       <div>
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">履约任务</h1>
+            <h1 className="text-2xl font-bold text-gray-900">履约任务台账</h1>
             <p className="text-sm text-gray-500 mt-1">
-              管理合同的付款、交货、验收等履约节点
+              跟踪管理所有合同的付款、交货、验收履约节点
             </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
           <Card>
             <CardContent>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-500">全部任务</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">{tasks.length}</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">{totalCount}</p>
                 </div>
                 <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
                   <FileText className="w-6 h-6 text-blue-600" />
@@ -256,6 +292,28 @@ export default function PerformanceTasksPage() {
               </div>
             </CardContent>
           </Card>
+          <Card>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">完成进度</p>
+                  <div className="flex items-baseline gap-1 mt-1">
+                    <p className="text-2xl font-bold text-primary-600">{progressPercent}</p>
+                    <span className="text-sm text-gray-400">%</span>
+                  </div>
+                </div>
+                <div className="w-12 h-12 rounded-lg bg-primary-100 flex items-center justify-center">
+                  <TrendingUp className="w-6 h-6 text-primary-600" />
+                </div>
+              </div>
+              <div className="mt-3 w-full bg-gray-100 rounded-full h-2">
+                <div
+                  className="bg-primary-600 h-2 rounded-full transition-all"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {overdueCount > 0 && (
@@ -269,6 +327,72 @@ export default function PerformanceTasksPage() {
             </div>
           </div>
         )}
+
+        <Card className="mb-4">
+          <CardContent>
+            <div className="flex items-start gap-4 flex-wrap">
+              <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+                <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <input
+                  type="text"
+                  placeholder="搜索任务名称/合同/负责人..."
+                  value={searchKeyword}
+                  onChange={(e) => setSearchKeyword(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+              <div className="flex items-center gap-2 min-w-[200px]">
+                <Filter className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <select
+                  value={filterContract}
+                  onChange={(e) => setFilterContract(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                >
+                  <option value="">全部合同</option>
+                  {uniqueContracts.map(c => (
+                    <option key={c.id} value={c.id}>{c.title}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2 min-w-[150px]">
+                <User className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <select
+                  value={filterAssignee}
+                  onChange={(e) => setFilterAssignee(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                >
+                  <option value="">全部负责人</option>
+                  {uniqueAssignees.map(a => (
+                    <option key={a} value={a}>{a}</option>
+                  ))}
+                </select>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={filterOverdueOnly}
+                  onChange={(e) => setFilterOverdueOnly(e.target.checked)}
+                  className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
+                />
+                <span className="text-sm text-gray-700">仅看逾期</span>
+              </label>
+              {(searchKeyword || filterContract || filterAssignee || filterOverdueOnly) && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setSearchKeyword('');
+                    setFilterContract('');
+                    setFilterAssignee('');
+                    setFilterOverdueOnly(false);
+                  }}
+                >
+                  重置筛选
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="flex items-center gap-2 mb-4">
           {filters.map((f) => (
@@ -297,9 +421,9 @@ export default function PerformanceTasksPage() {
               columns={columns}
               data={filteredTasks}
               loading={loading}
-              emptyText={filter === 'all' ? '暂无履约任务' : `暂无${filters.find(f => f.key === filter)?.label}任务`}
+              emptyText={filter === 'all' && !searchKeyword && !filterContract && !filterAssignee && !filterOverdueOnly ? '暂无履约任务' : '没有符合筛选条件的任务'}
               rowKey={(row) => row.id}
-              onRowClick={(row) => navigate(`/contracts/${row.contractId}`)}
+              onRowClick={(row) => navigate(`/contracts/${row.contractId}?tab=tasks`)}
             />
           </CardContent>
         </Card>
